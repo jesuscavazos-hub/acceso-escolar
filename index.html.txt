@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Terminal de Acceso Escolar</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; background-color: #f4f6f9; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; box-sizing: border-box; }
+    .container { width: 100%; max-width: 550px; background: white; padding: 30px; border-radius: 28px; box-shadow: 0 15px 35px rgba(0,0,0,0.08); text-align: center; box-sizing: border-box; }
+    #feedback { margin-bottom: 25px; padding: 25px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 160px; transition: all 0.4s ease; }
+    .tipo-movimiento { font-size: 28px; font-weight: 800; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase; }
+    .saludo-msg { font-size: 18px; font-weight: 500; margin-bottom: 12px; opacity: 0.9; }
+    .nombre-alumno { font-size: 26px; font-weight: 700; margin-bottom: 8px; line-height: 1.2; }
+    .detalles-alumno { font-size: 18px; font-weight: 600; padding: 6px 16px; border-radius: 30px; background: rgba(255,255,255,0.25); display: inline-block; }
+    .camera-area { width: 100%; max-width: 320px; margin: 0 auto; }
+    #reader { width: 100%; border-radius: 20px; overflow: hidden; background: #000; border: none !important; }
+    
+    /* Panel de control */
+    .config-panel { margin-top: 25px; padding-top: 15px; border-top: 1px dashed #e5e5ea; text-align: left; }
+    .control-group { margin-bottom: 15px; }
+    label { font-size: 12px; font-weight: 700; color: #86868b; text-transform: uppercase; display: block; margin-bottom: 6px; }
+    select { width: 100%; padding: 12px; font-size: 16px; border-radius: 12px; border: 1px solid #d2d2d7; background-color: #f5f5f7; color: #1d1d1f; font-weight: 600; -webkit-appearance: none; outline: none; }
+    select:focus { border-color: #007aff; }
+    
+    .estado-espera { background-color: #f5f5f7; color: #1d1d1f; border: 2px dashed #d2d2d7; }
+    .estado-espera .tipo-movimiento { color: #86868b; font-size: 22px; }
+    .estado-carga { background-color: #e5e5ea; color: #1d1d1f; }
+    .estado-carga .tipo-movimiento { color: #48484a; }
+    .verde { background-color: #34c759; color: white; box-shadow: 0 8px 20px rgba(52,199,89,0.3); }
+    .azul { background-color: #007aff; color: white; box-shadow: 0 8px 20px rgba(0,122,255,0.3); }
+    .rojo { background-color: #ff3b30; color: white; box-shadow: 0 8px 20px rgba(255,59,48,0.3); }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div id="feedback" class="estado-espera">
+    <div class="tipo-movimiento">🖥️ Sistema Listo</div>
+    <div class="saludo-msg">Aproxime el código QR al lector</div>
+  </div>
+
+  <div class="camera-area">
+    <div id="reader"></div>
+  </div>
+  
+  <div class="config-panel">
+    <div class="control-group">
+      <label for="tipoRegistro">⚙️ Modo de Operación:</label>
+      <select id="tipoRegistro">
+        <option value="Entrada">🟢 Registro ENTRADAS (Mañana)</option>
+        <option value="Salida">🔵 Registo SALIDAS (Tarde)</option>
+      </select>
+    </div>
+    
+    <div class="control-group">
+      <label for="acceso">📍 Ubicación:</label>
+      <select id="acceso">
+        <option value="Puerta 1">Puerta Preescolar y Primaria Menor (Principal)</option>
+        <option value="Puerta 2">Puerta Primaria Mayor y Secundaria (Secundaria)</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ⚠️ PON AQUÍ TU URL ACTUALIZADA DE APPS SCRIPT
+  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwhBMU2AFoGIMAZinCJXsClmaKsm3Q82sxhEvQL-2uTIyTjq3YFacC-p6OQqFPCMNOk/exec";
+
+  let html5QrcodeScanner;
+  let ultimoCodigo = "";
+  let procesando = false;
+  const feedbackDiv = document.getElementById("feedback");
+
+  function onScanSuccess(decodedText, decodedResult) {
+    if (procesando || decodedText === ultimoCodigo) return;
+    
+    procesando = true;
+    ultimoCodigo = decodedText;
+    const acceso = document.getElementById("acceso").value;
+    const tipoSeleccionado = document.getElementById("tipoRegistro").value; // Leemos la orden
+    
+    feedbackDiv.className = "estado-carga";
+    feedbackDiv.innerHTML = `<div class="tipo-movimiento">🔄 Procesando</div>
+                             <div class="saludo-msg">Consultando base de datos...</div>`;
+
+    // Enviamos el "tipo" directo al servidor
+    fetch(WEB_APP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ matricula: decodedText, acceso: acceso, tipo: tipoSeleccionado })
+    })
+    .then(res => res.json())
+    .then(response => {
+      feedbackDiv.className = "";
+      
+      if (response.estatus === "success") {
+        feedbackDiv.classList.add(response.movimiento === "Entrada" ? "verde" : "azul");
+        
+        feedbackDiv.innerHTML = `
+          <div class="tipo-movimiento">🔔 ${response.movimiento} Registrada</div>
+          <div class="saludo-msg">${response.mensaje}</div>
+          <div class="nombre-alumno">${response.nombre}</div>
+          <div class="detalles-alumno">${response.gradoGrupo}</div>
+        `;
+      } else {
+        feedbackDiv.classList.add("rojo");
+        feedbackDiv.innerHTML = `<div class="tipo-movimiento">❌ Acceso Denegado</div>
+                                 <div class="saludo-msg">${response.mensaje}</div>`;
+      }
+      
+      setTimeout(() => {
+        feedbackDiv.className = "estado-espera";
+        feedbackDiv.innerHTML = `<div class="tipo-movimiento">🖥️ Sistema Listo</div>
+                                 <div class="saludo-msg">Aproxime el código QR al lector</div>`;
+        ultimoCodigo = "";
+        procesando = false;
+      }, 3500);
+    })
+    .catch(err => {
+      feedbackDiv.className = "rojo";
+      feedbackDiv.innerHTML = `<div class="tipo-movimiento">⚠️ Error de Red</div>
+                               <div class="saludo-msg">Verifica la conexión a internet</div>`;
+      setTimeout(() => {
+        feedbackDiv.className = "estado-espera";
+        feedbackDiv.innerHTML = `<div class="tipo-movimiento">🖥️ Sistema Listo</div>
+                                 <div class="saludo-msg">Aproxime el código QR al lector...</div>`;
+        ultimoCodigo = "";
+        procesando = false;
+      }, 3500);
+    });
+  }
+
+  function calcularCuadroLector(viewfinderWidth, viewfinderHeight) {
+    const tamañoMinimo = Math.min(viewfinderWidth, viewfinderHeight);
+    return { width: Math.floor(tamañoMinimo * 0.75), height: Math.floor(tamañoMinimo * 0.75) };
+  }
+
+  html5QrcodeScanner = new Html5QrcodeScanner("reader", { 
+    fps: 20, qrbox: calcularCuadroLector, aspectRatio: 1.0,
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+  });
+  html5QrcodeScanner.render(onScanSuccess);
+</script>
+
+</body>
+</html>
